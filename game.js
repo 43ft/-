@@ -31,7 +31,10 @@ class Tile {
     this.tx = this.x;
     this.ty = this.y;
     this.scale = 0;
-    this.newScale = 1;
+    this.targetScale = 1;
+    this.isNew = true;
+    this.isMerging = false;
+    this.toRemove = false;
   }
 
   setTarget() {
@@ -40,12 +43,27 @@ class Tile {
   }
 
   update() {
-    const s = 0.3;
+    const s = 0.25;
     this.x += (this.tx - this.x) * s;
     this.y += (this.ty - this.y) * s;
-    if (this.scale < this.newScale) {
-      this.scale += (this.newScale - this.scale) * s;
-      if (this.scale > 0.98) this.scale = this.newScale;
+
+    if (this.isNew) {
+      this.scale += (this.targetScale - this.scale) * s;
+      if (this.scale > 0.98) {
+        this.scale = this.targetScale;
+        this.isNew = false;
+      }
+    }
+
+    if (this.isMerging) {
+      const mergeSpeed = 0.2;
+      this.scale += (1.2 - this.scale) * mergeSpeed;
+      if (this.scale > 1.18) {
+        this.isMerging = false;
+        this.targetScale = 1;
+      }
+    } else if (!this.isNew) {
+      this.scale += (1 - this.scale) * 0.15;
     }
   }
 
@@ -53,6 +71,12 @@ class Tile {
     this.r = r;
     this.c = c;
     this.setTarget();
+  }
+
+  mergeTo(newValue) {
+    this.v = newValue;
+    this.isMerging = true;
+    this.targetScale = 1.2;
   }
 }
 
@@ -114,6 +138,8 @@ class Game {
     const isUp = dir === 'up';
     const isDown = dir === 'down';
 
+    const merges = [];
+
     for (let i = 0; i < GRID_SIZE; i++) {
       const line = [];
       const tileRefs = [];
@@ -153,43 +179,40 @@ class Game {
         newLine.push(null);
       }
 
-      let idx = 0;
+      let sourceIdx = 0;
       for (let j = 0; j < GRID_SIZE; j++) {
         let tR, tC;
         if (isLeft) {
-          tR = i;
-          tC = j;
+          tR = i; tC = j;
         } else if (isRight) {
-          tR = i;
-          tC = GRID_SIZE - 1 - j;
+          tR = i; tC = GRID_SIZE - 1 - j;
         } else if (isUp) {
-          tR = j;
-          tC = i;
+          tR = j; tC = i;
         } else {
-          tR = GRID_SIZE - 1 - j;
-          tC = i;
+          tR = GRID_SIZE - 1 - j; tC = i;
         }
 
         if (newLine[j] !== null) {
-          const src = tileRefs[idx];
-          if (src) {
+          if (sourceIdx < tileRefs.length) {
+            const src = tileRefs[sourceIdx];
             src.tile.moveTo(tR, tC);
-            this.grid[tR][tC] = src.tile;
+
             if (src.r !== tR || src.c !== tC) {
-              this.grid[src.r][src.c] = null;
+              if (this.grid[src.r][src.c] === src.tile) {
+                this.grid[src.r][src.c] = null;
+              }
               moved = true;
             }
-          }
 
-          if (merged.includes(j)) {
-            this.grid[tR][tC].v = newLine[j];
-          }
+            this.grid[tR][tC] = src.tile;
 
-          idx++;
-        } else {
-          if (this.grid[tR][tC]) {
-            this.grid[tR][tC] = null;
-            moved = true;
+            if (merged.includes(j)) {
+              merges.push({
+                tile: src.tile,
+                value: newLine[j]
+              });
+            }
+            sourceIdx++;
           }
         }
       }
@@ -198,11 +221,17 @@ class Game {
     if (moved) {
       this.animating = true;
       this.save();
+
       setTimeout(() => {
-        this.spawn();
-        this.animating = false;
-        if (!this.canMove()) this.over = true;
-      }, 120);
+        for (const merge of merges) {
+          merge.tile.mergeTo(merge.value);
+        }
+        setTimeout(() => {
+          this.spawn();
+          this.animating = false;
+          if (!this.canMove()) this.over = true;
+        }, 100);
+      }, 130);
     }
   }
 
@@ -210,8 +239,8 @@ class Game {
     for (let r = 0; r < GRID_SIZE; r++)
       for (let c = 0; c < GRID_SIZE; c++) {
         if (!this.grid[r][c]) return true;
-        if (c < GRID_SIZE - 1 && this.grid[r][c]?.v === this.grid[r][c + 1]?.v) return true;
-        if (r < GRID_SIZE - 1 && this.grid[r][c]?.v === this.grid[r + 1][c]?.v) return true;
+        if (c < GRID_SIZE - 1 && this.grid[r][c]?.v === this.grid[r][c+1]?.v) return true;
+        if (r < GRID_SIZE - 1 && this.grid[r][c]?.v === this.grid[r+1][c]?.v) return true;
       }
     return false;
   }
@@ -224,6 +253,7 @@ class Game {
 
   update() {
     for (const t of this.tiles) t.update();
+    this.tiles = this.tiles.filter(t => !t.toRemove);
   }
 
   render() {
@@ -261,27 +291,27 @@ class Game {
     ctx.fillText('2048', W / 2, 40);
 
     ctx.font = '16px Arial';
-    ctx.fillText(`分数: ${this.score}  |  最高: ${this.best}`, W / 2, 75);
+    ctx.fillText(`分数:${this.score} 最高:${this.best}`, W / 2, 75);
 
     const y = boardY + BOARD_SIZE + 35;
     ctx.font = '14px Arial';
     ctx.fillStyle = '#8f7a66';
-    ctx.fillText('滑动屏幕移动方块', W / 2, y);
+    ctx.fillText('滑动移动', W / 2, y);
     ctx.fillStyle = '#bbada0';
     ctx.font = '12px Arial';
-    ctx.fillText('相同数字合并翻倍', W / 2, y + 22);
+    ctx.fillText('相同合并', W / 2, y + 22);
 
     if (this.over) {
       ctx.fillStyle = 'rgba(238,228,218,0.85)';
       this.roundRect(boardX - 15, boardY - 15, BOARD_SIZE + 30, BOARD_SIZE + 30, 12);
       ctx.fillStyle = '#776e65';
       ctx.font = 'bold 36px Arial';
-      ctx.fillText('游戏结束', W / 2, boardY + BOARD_SIZE / 2 - 15);
+      ctx.fillText('结束', W / 2, boardY + BOARD_SIZE / 2 - 15);
       ctx.font = '18px Arial';
-      ctx.fillText(`得分: ${this.score}`, W / 2, boardY + BOARD_SIZE / 2 + 20);
+      ctx.fillText(`得分:${this.score}`, W / 2, boardY + BOARD_SIZE / 2 + 20);
       ctx.font = '14px Arial';
       ctx.fillStyle = '#8f7a66';
-      ctx.fillText('点击重新开始', W / 2, boardY + BOARD_SIZE / 2 + 55);
+      ctx.fillText('点重试', W / 2, boardY + BOARD_SIZE / 2 + 55);
     }
   }
 
