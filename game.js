@@ -4,7 +4,6 @@ const ctx = canvas.getContext('2d');
 const GRID_SIZE = 4;
 const CELL_SIZE = 80;
 const CELL_SPACING = 12;
-const MARGIN = 30;
 const BOARD_SIZE = GRID_SIZE * CELL_SIZE + (GRID_SIZE + 1) * CELL_SPACING;
 
 const COLORS = {
@@ -37,16 +36,90 @@ const TEXT_COLORS = {
   4096: '#f9f6f2'
 };
 
+let canvasWidth = 375;
+let canvasHeight = 667;
+let startX = 0;
+let startY = 0;
+let totalHeight = 0;
+
+class Tile {
+  constructor(value, row, col) {
+    this.value = value;
+    this.row = row;
+    this.col = col;
+    this.x = 0;
+    this.y = 0;
+    this.targetX = 0;
+    this.targetY = 0;
+    this.scale = 0;
+    this.targetScale = 1;
+    this.mergeScale = 1;
+    this.isNew = true;
+    this.isMerging = false;
+    this.updatePosition();
+    this.updateScale();
+  }
+
+  updatePosition() {
+    this.targetX = startX + CELL_SPACING + this.col * (CELL_SIZE + CELL_SPACING);
+    this.targetY = startY + CELL_SPACING + this.row * (CELL_SIZE + CELL_SPACING);
+  }
+
+  updateScale() {
+    this.targetScale = 1;
+  }
+
+  moveTo(row, col) {
+    this.row = row;
+    this.col = col;
+    this.updatePosition();
+    this.isNew = false;
+  }
+
+  merge(value) {
+    this.value = value;
+    this.isMerging = true;
+    this.mergeScale = 1.2;
+  }
+
+  update() {
+    const speed = 0.2;
+    this.x += (this.targetX - this.x) * speed;
+    this.y += (this.targetY - this.y) * speed;
+
+    if (this.scale < this.targetScale) {
+      this.scale += (this.targetScale - this.scale) * speed;
+    } else if (this.scale > this.targetScale) {
+      this.scale = this.targetScale;
+    }
+
+    if (this.isMerging) {
+      this.mergeScale += (1 - this.mergeScale) * speed;
+      if (Math.abs(this.mergeScale - 1) < 0.01) {
+        this.mergeScale = 1;
+        this.isMerging = false;
+      }
+    }
+
+    if (this.isNew && this.scale >= 0.9) {
+      this.scale = 1;
+      this.isNew = false;
+    }
+  }
+}
+
 class Game2048 {
   constructor() {
-    this.grid = [];
+    this.tiles = [];
     this.score = 0;
     this.bestScore = 0;
     this.gameOver = false;
     this.won = false;
+    this.isAnimating = false;
     this.loadBestScore();
     this.init();
     this.bindEvents();
+    this.gameLoop();
   }
 
   loadBestScore() {
@@ -72,184 +145,164 @@ class Game2048 {
   }
 
   init() {
-    this.grid = [];
+    this.tiles = [];
     this.score = 0;
     this.gameOver = false;
     this.won = false;
+    this.isAnimating = false;
 
-    for (let i = 0; i < GRID_SIZE; i++) {
-      this.grid[i] = [];
-      for (let j = 0; j < GRID_SIZE; j++) {
-        this.grid[i][j] = null;
+    this.addRandomTile();
+    this.addRandomTile();
+  }
+
+  getEmptyCells() {
+    const cells = [];
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        if (!this.getTileAt(r, c)) {
+          cells.push({ row: r, col: c });
+        }
       }
     }
+    return cells;
+  }
 
-    this.addRandomTile();
-    this.addRandomTile();
-    this.render();
+  getTileAt(row, col) {
+    return this.tiles.find(t => t.row === row && t.col === col);
   }
 
   addRandomTile() {
-    const emptyCells = [];
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        if (!this.grid[i][j]) {
-          emptyCells.push({ row: i, col: j });
-        }
-      }
-    }
-
+    const emptyCells = this.getEmptyCells();
     if (emptyCells.length === 0) return false;
 
-    const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-    this.grid[randomCell.row][randomCell.col] = Math.random() < 0.9 ? 2 : 4;
+    const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+    const value = Math.random() < 0.9 ? 2 : 4;
+    const tile = new Tile(value, cell.row, cell.col);
+    this.tiles.push(tile);
     return true;
   }
 
-  slideLeft(row) {
-    let arr = row.filter(val => val !== null);
-    let merged = [];
+  move(direction) {
+    if (this.isAnimating || this.gameOver || this.won) return;
 
-    for (let i = 0; i < arr.length; i++) {
-      if (i + 1 < arr.length && arr[i] === arr[i + 1]) {
-        const newVal = arr[i] * 2;
-        merged.push(newVal);
-        this.score += newVal;
-        if (newVal >= 2048) {
-          this.won = true;
+    const oldPositions = this.tiles.map(t => ({ row: t.row, col: t.col, value: t.value }));
+    let moved = false;
+
+    const vectors = {
+      'left': { dr: 0, dc: -1 },
+      'right': { dr: 0, dc: 1 },
+      'up': { dr: -1, dc: 0 },
+      'down': { dr: 1, dc: 0 }
+    };
+
+    const v = vectors[direction];
+    const rows = v.dr === 1 ? [GRID_SIZE - 1, 1, 0] : v.dr === -1 ? [0, 1, GRID_SIZE - 1] : [0, 1, 2, 3];
+    const cols = v.dc === 1 ? [GRID_SIZE - 1, 1, 0] : v.dc === -1 ? [0, 1, GRID_SIZE - 1] : [0, 1, 2, 3];
+
+    const mergedThisTurn = [];
+
+    for (const r of rows) {
+      for (const c of cols) {
+        const tile = this.getTileAt(r, c);
+        if (!tile) continue;
+
+        let newR = r;
+        let newC = c;
+
+        while (true) {
+          const nextR = newR + v.dr;
+          const nextC = newC + v.dc;
+
+          if (nextR < 0 || nextR >= GRID_SIZE || nextC < 0 || nextC >= GRID_SIZE) break;
+
+          const nextTile = this.getTileAt(nextR, nextC);
+
+          if (!nextTile) {
+            newR = nextR;
+            newC = nextC;
+          } else if (nextTile.value === tile.value && !mergedThisTurn.includes(nextTile)) {
+            newR = nextR;
+            newC = nextC;
+            mergedThisTurn.push(tile);
+            break;
+          } else {
+            break;
+          }
         }
-        i++;
-      } else {
-        merged.push(arr[i]);
-      }
-    }
 
-    while (merged.length < GRID_SIZE) {
-      merged.push(null);
-    }
+        if (newR !== r || newC !== c) {
+          moved = true;
+          tile.moveTo(newR, newC);
 
-    return merged;
-  }
+          const targetTile = this.getTileAt(newR, newC);
+          if (targetTile && targetTile !== tile && targetTile.value === tile.value) {
+            const newValue = tile.value * 2;
+            targetTile.merge(newValue);
+            this.tiles = this.tiles.filter(t => t !== tile);
+            this.score += newValue;
 
-  slideRight(row) {
-    let arr = row.filter(val => val !== null);
-    let merged = [];
-
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (i - 1 >= 0 && arr[i] === arr[i - 1]) {
-        const newVal = arr[i] * 2;
-        merged.unshift(newVal);
-        this.score += newVal;
-        if (newVal >= 2048) {
-          this.won = true;
+            if (newValue >= 2048 && !this.won) {
+              this.won = true;
+            }
+          }
         }
-        i--;
-      } else {
-        merged.unshift(arr[i]);
       }
     }
 
-    while (merged.length < GRID_SIZE) {
-      merged.unshift(null);
-    }
-
-    return merged;
-  }
-
-  moveLeft() {
-    const oldGrid = JSON.stringify(this.grid);
-    for (let i = 0; i < GRID_SIZE; i++) {
-      this.grid[i] = this.slideLeft(this.grid[i]);
-    }
-    const hasChanged = JSON.stringify(this.grid) !== oldGrid;
-    if (hasChanged) {
-      this.addRandomTile();
-      this.checkGameOver();
+    if (moved) {
+      this.isAnimating = true;
       this.saveBestScore();
-    }
-    this.render();
-  }
 
-  moveRight() {
-    const oldGrid = JSON.stringify(this.grid);
-    for (let i = 0; i < GRID_SIZE; i++) {
-      this.grid[i] = this.slideRight(this.grid[i]);
-    }
-    const hasChanged = JSON.stringify(this.grid) !== oldGrid;
-    if (hasChanged) {
-      this.addRandomTile();
-      this.checkGameOver();
-      this.saveBestScore();
-    }
-    this.render();
-  }
+      setTimeout(() => {
+        this.addRandomTile();
+        this.isAnimating = false;
 
-  transposeGrid() {
-    const newGrid = [];
-    for (let j = 0; j < GRID_SIZE; j++) {
-      newGrid[j] = [];
-      for (let i = 0; i < GRID_SIZE; i++) {
-        newGrid[j][i] = this.grid[i][j];
-      }
+        if (!this.canMove()) {
+          this.gameOver = true;
+        }
+      }, 150);
     }
-    this.grid = newGrid;
-  }
-
-  moveUp() {
-    this.transposeGrid();
-    const oldGrid = JSON.stringify(this.grid);
-    for (let i = 0; i < GRID_SIZE; i++) {
-      this.grid[i] = this.slideLeft(this.grid[i]);
-    }
-    const hasChanged = JSON.stringify(this.grid) !== oldGrid;
-    this.transposeGrid();
-    if (hasChanged) {
-      this.addRandomTile();
-      this.checkGameOver();
-      this.saveBestScore();
-    }
-    this.render();
-  }
-
-  moveDown() {
-    this.transposeGrid();
-    const oldGrid = JSON.stringify(this.grid);
-    for (let i = 0; i < GRID_SIZE; i++) {
-      this.grid[i] = this.slideRight(this.grid[i]);
-    }
-    const hasChanged = JSON.stringify(this.grid) !== oldGrid;
-    this.transposeGrid();
-    if (hasChanged) {
-      this.addRandomTile();
-      this.checkGameOver();
-      this.saveBestScore();
-    }
-    this.render();
   }
 
   canMove() {
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        if (!this.grid[i][j]) return true;
+    if (this.getEmptyCells().length > 0) return true;
 
-        const current = this.grid[i][j];
-        if (j < GRID_SIZE - 1 && current === this.grid[i][j + 1]) return true;
-        if (i < GRID_SIZE - 1 && current === this.grid[i + 1][j]) return true;
+    for (let r = 0; r < GRID_SIZE; r++) {
+      for (let c = 0; c < GRID_SIZE; c++) {
+        const tile = this.getTileAt(r, c);
+        if (!tile) continue;
+
+        if (c < GRID_SIZE - 1) {
+          const right = this.getTileAt(r, c + 1);
+          if (right && right.value === tile.value) return true;
+        }
+        if (r < GRID_SIZE - 1) {
+          const down = this.getTileAt(r + 1, c);
+          if (down && down.value === tile.value) return true;
+        }
       }
     }
     return false;
   }
 
-  checkGameOver() {
-    if (!this.canMove()) {
-      this.gameOver = true;
+  gameLoop() {
+    this.update();
+    this.render();
+    requestAnimationFrame(() => this.gameLoop());
+  }
+
+  update() {
+    for (const tile of this.tiles) {
+      tile.update();
     }
   }
 
   render() {
     this.drawBackground();
     this.drawCells();
+    this.drawTiles();
     this.drawScore();
+    this.drawInstructions();
 
     if (this.gameOver) {
       this.drawGameOver();
@@ -259,106 +312,137 @@ class Game2048 {
   }
 
   drawBackground() {
-    const canvasWidth = canvas.width;
-    const startX = (canvasWidth - BOARD_SIZE) / 2;
+    ctx.fillStyle = '#faf8ef';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
     ctx.fillStyle = '#bbada0';
-    ctx.fillRect(startX, MARGIN + 80, BOARD_SIZE, BOARD_SIZE);
+    const boardX = startX - 20;
+    const boardY = startY - 20;
+    const boardWidth = BOARD_SIZE + 40;
+    const boardHeight = BOARD_SIZE + 40;
+    this.roundRect(boardX, boardY, boardWidth, boardHeight, 15);
 
     ctx.fillStyle = '#cdc1b4';
     for (let i = 0; i < GRID_SIZE; i++) {
       for (let j = 0; j < GRID_SIZE; j++) {
         const x = startX + CELL_SPACING + j * (CELL_SIZE + CELL_SPACING);
-        const y = MARGIN + 80 + CELL_SPACING + i * (CELL_SIZE + CELL_SPACING);
-        ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+        const y = startY + CELL_SPACING + i * (CELL_SIZE + CELL_SPACING);
+        this.roundRect(x, y, CELL_SIZE, CELL_SIZE, 8);
       }
     }
   }
 
   drawCells() {
-    const canvasWidth = canvas.width;
-    const startX = (canvasWidth - BOARD_SIZE) / 2;
+  }
 
-    for (let i = 0; i < GRID_SIZE; i++) {
-      for (let j = 0; j < GRID_SIZE; j++) {
-        const val = this.grid[i][j];
-        if (val) {
-          const x = startX + CELL_SPACING + j * (CELL_SIZE + CELL_SPACING);
-          const y = MARGIN + 80 + CELL_SPACING + i * (CELL_SIZE + CELL_SPACING);
+  drawTiles() {
+    for (const tile of this.tiles) {
+      const x = tile.x;
+      const y = tile.y;
+      const scale = tile.scale * (tile.isMerging ? tile.mergeScale : 1);
+      const size = CELL_SIZE * scale;
+      const offset = (CELL_SIZE - size) / 2;
 
-          ctx.fillStyle = COLORS[val] || '#3c3a32';
-          ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+      ctx.fillStyle = COLORS[tile.value] || '#3c3a32';
+      this.roundRect(x + offset, y + offset, size, size, 6);
 
-          ctx.fillStyle = TEXT_COLORS[val] || '#f9f6f2';
-          ctx.font = val < 100 ? '40px Arial' : val < 1000 ? '30px Arial' : '24px Arial';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(val, x + CELL_SIZE / 2, y + CELL_SIZE / 2);
-        }
+      if (tile.value > 0) {
+        ctx.fillStyle = TEXT_COLORS[tile.value] || '#f9f6f2';
+        const fontSize = tile.value < 100 ? 36 : tile.value < 1000 ? 28 : 22;
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(tile.value, x + CELL_SIZE / 2, y + CELL_SIZE / 2);
       }
     }
   }
 
   drawScore() {
-    const canvasWidth = canvas.width;
-
-    ctx.fillStyle = '#faf8ef';
-    ctx.fillRect(0, 0, canvasWidth, 70);
+    const titleY = 50;
+    const scoreY = 100;
 
     ctx.fillStyle = '#776e65';
-    ctx.font = 'bold 40px Arial';
+    ctx.font = 'bold 36px Arial';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('2048', canvasWidth / 2, 20);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('2048', canvasWidth / 2, titleY);
 
-    ctx.font = '16px Arial';
-    ctx.fillText(`分数: ${this.score} | 最高分: ${this.bestScore}`, canvasWidth / 2, 50);
+    ctx.font = '18px Arial';
+    ctx.fillText(`分数: ${this.score}    最高分: ${this.bestScore}`, canvasWidth / 2, scoreY);
+  }
 
+  drawInstructions() {
+    const y = startY + BOARD_SIZE + 50;
+
+    ctx.fillStyle = '#8f7a66';
     ctx.font = '14px Arial';
-    ctx.fillText('上下左右滑动开始游戏 | 点击重新开始', canvasWidth / 2, MARGIN + 90 + BOARD_SIZE);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('滑动屏幕移动方块', canvasWidth / 2, y);
+
+    ctx.font = '12px Arial';
+    ctx.fillStyle = '#bbada0';
+    ctx.fillText('相同数字合并翻倍 | 合成2048获胜', canvasWidth / 2, y + 25);
   }
 
   drawGameOver() {
-    const canvasWidth = canvas.width;
-    const startX = (canvasWidth - BOARD_SIZE) / 2;
-
-    ctx.fillStyle = 'rgba(238, 228, 218, 0.73)';
-    ctx.fillRect(startX, MARGIN + 80, BOARD_SIZE, BOARD_SIZE);
+    ctx.fillStyle = 'rgba(238, 228, 218, 0.9)';
+    this.roundRect(startX - 20, startY - 20, BOARD_SIZE + 40, BOARD_SIZE + 40, 15);
 
     ctx.fillStyle = '#776e65';
-    ctx.font = 'bold 40px Arial';
+    ctx.font = 'bold 36px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('游戏结束!', canvasWidth / 2, MARGIN + 80 + BOARD_SIZE / 2);
+    ctx.fillText('游戏结束', canvasWidth / 2, startY + BOARD_SIZE / 2 - 15);
 
-    ctx.font = '20px Arial';
-    ctx.fillText('点击屏幕重新开始', canvasWidth / 2, MARGIN + 110 + BOARD_SIZE / 2);
+    ctx.font = '18px Arial';
+    ctx.fillText(`得分: ${this.score}`, canvasWidth / 2, startY + BOARD_SIZE / 2 + 20);
+
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#8f7a66';
+    ctx.fillText('点击重新开始', canvasWidth / 2, startY + BOARD_SIZE / 2 + 55);
   }
 
   drawWin() {
-    const canvasWidth = canvas.width;
-    const startX = (canvasWidth - BOARD_SIZE) / 2;
-
-    ctx.fillStyle = 'rgba(237, 194, 46, 0.73)';
-    ctx.fillRect(startX, MARGIN + 80, BOARD_SIZE, BOARD_SIZE);
+    ctx.fillStyle = 'rgba(237, 194, 46, 0.9)';
+    this.roundRect(startX - 20, startY - 20, BOARD_SIZE + 40, BOARD_SIZE + 40, 15);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 40px Arial';
+    ctx.font = 'bold 36px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('恭喜!', canvasWidth / 2, MARGIN + 80 + BOARD_SIZE / 2);
+    ctx.fillText('🎉 恭喜!', canvasWidth / 2, startY + BOARD_SIZE / 2 - 15);
 
-    ctx.font = '20px Arial';
-    ctx.fillText('你合成了2048!', canvasWidth / 2, MARGIN + 110 + BOARD_SIZE / 2);
+    ctx.font = '18px Arial';
+    ctx.fillText('你合成了 2048!', canvasWidth / 2, startY + BOARD_SIZE / 2 + 20);
+
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#8f7a66';
+    ctx.fillText('点击继续或重新开始', canvasWidth / 2, startY + BOARD_SIZE / 2 + 55);
+  }
+
+  roundRect(x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fill();
   }
 
   bindEvents() {
-    let startX = 0;
-    let startY = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
 
     wx.onTouchStart((res) => {
-      startX = res.touches[0].clientX;
-      startY = res.touches[0].clientY;
+      touchStartX = res.touches[0].clientX;
+      touchStartY = res.touches[0].clientY;
     });
 
     wx.onTouchEnd((res) => {
@@ -367,23 +451,25 @@ class Game2048 {
         return;
       }
 
-      const endX = res.changedTouches[0].clientX;
-      const endY = res.changedTouches[0].clientY;
+      const touchEndX = res.changedTouches[0].clientX;
+      const touchEndY = res.changedTouches[0].clientY;
 
-      const dx = endX - startX;
-      const dy = endY - startY;
+      const dx = touchEndX - touchStartX;
+      const dy = touchEndY - touchStartY;
+
+      const minSwipe = 30;
 
       if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 30) {
-          this.moveRight();
-        } else if (dx < -30) {
-          this.moveLeft();
+        if (dx > minSwipe) {
+          this.move('right');
+        } else if (dx < -minSwipe) {
+          this.move('left');
         }
       } else {
-        if (dy > 30) {
-          this.moveDown();
-        } else if (dy < -30) {
-          this.moveUp();
+        if (dy > minSwipe) {
+          this.move('down');
+        } else if (dy < -minSwipe) {
+          this.move('up');
         }
       }
     });
@@ -392,8 +478,15 @@ class Game2048 {
 
 function initCanvas() {
   const systemInfo = wx.getSystemInfoSync();
-  canvas.width = systemInfo.screenWidth;
-  canvas.height = systemInfo.screenHeight;
+  canvasWidth = systemInfo.screenWidth;
+  canvasHeight = systemInfo.screenHeight;
+
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+
+  totalHeight = 160 + BOARD_SIZE + 80;
+  startX = (canvasWidth - BOARD_SIZE) / 2;
+  startY = (canvasHeight - totalHeight) / 2 + 60;
 }
 
 initCanvas();
