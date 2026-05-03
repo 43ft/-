@@ -1,0 +1,39 @@
+<view class="container">
+  <view class="card mb-20">
+    <view class="flex-between">
+      <view class="flex-col">
+        <text class="text-secondary">💰 金币</text>
+        <text class="text-large text-bold text-primary">{{playerData.gold}}</text>
+      </view>
+      <view class="flex-col text-right">
+        <text class="text-secondary">背包容量</text>
+        <text class="text-large text-bold">{{playerData.backpack.capacity}}</text>
+      </view>
+    </view>
+  </view>
+
+  <text class="text-bold text-large mb-20">商店</text>
+
+  <view class="shop-list">
+    <view class="card mb-20" wx:for="{{shopItems}}" wx:key="id">
+      <view class="flex-between">
+        <view class="flex-row gap-20">
+          <view class="icon-circle-large">{{item.icon}}</view>
+          <view class="flex-col text-left">
+            <text class="text-bold text-large">{{item.name}}</text>
+            <text class="text-secondary text-small">{{item.description}}</text>
+          </view>
+        </view>
+
+        <button
+          class="btn {{playerData.gold >= item.price ? 'btn-primary' : 'btn-disabled'}}"
+          data-item-id="{{item.id}}"
+          bindtap="onBuy"
+          disabled="{{playerData.gold < item.price}}"
+        >
+          💰 {{item.price}}
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,58 @@
+<view class="container">
+  <view class="card mb-20">
+    <view class="flex-between">
+      <view class="flex-col">
+        <text class="text-secondary">🏆 成就进度</text>
+        <text class="text-large text-bold">{{completedCount}}/{{totalCount}}</text>
+      </view>
+      <view class="flex-col text-right">
+        <text class="text-secondary">💰 金币</text>
+        <text class="text-large text-bold text-primary">{{playerData.gold}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="achievement-list">
+    <view
+      class="card mb-20 {{item.isCompleted ? 'achievement-completed' : ''}}"
+      wx:for="{{achievementsList}}"
+      wx:key="id"
+    >
+      <view class="flex-between">
+        <view class="flex-row gap-20">
+          <view class="icon-circle {{item.isCompleted ? 'icon-completed' : ''}}">
+            {{item.icon}}
+          </view>
+          <view class="flex-col text-left">
+            <text class="text-bold">{{item.name}}</text>
+            <text class="text-secondary text-small">{{item.description}}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{item.isCompleted}}" class="badge badge-success">
+          已完成
+        </view>
+        <view wx:else>
+          <button
+            class="btn btn-warning btn-small"
+            data-ach-id="{{item.id}}"
+            bindtap="onClaim"
+            disabled="{{item.progress < 100}}"
+          >
+            {{item.progress}}%
+          </button>
+        </view>
+      </view>
+
+      <view wx:if="{{!item.isCompleted}}" class="mt-20">
+        <view class="progress-bar">
+          <view class="progress-bar-inner" style="width: {{item.progress}}%"></view>
+        </view>
+      </view>
+
+      <view class="mt-20 flex-between">
+        <text class="text-secondary text-small">奖励: {{item.reward.value}} 金币</text>
+      </view>
+    </view>
+  </view>
+</view>

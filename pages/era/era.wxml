@@ -1,0 +1,61 @@
+<view class="container">
+  <view class="card mb-20">
+    <view class="flex-between">
+      <view class="flex-col">
+        <text class="text-secondary">⛏️ 累计挖矿</text>
+        <text class="text-large text-bold text-success">{{playerData.totalMined}}</text>
+      </view>
+      <view class="flex-col text-right">
+        <text class="text-secondary">当前层数</text>
+        <text class="text-large text-bold">第 {{playerData.currentLayer}} 层</text>
+      </view>
+    </view>
+  </view>
+
+  <text class="text-bold text-large mb-20">纪元一览</text>
+
+  <view wx:for="{{erasList}}" wx:key="id">
+    <view class="card mb-20 {{item.isCurrent ? 'current-era' : ''}}">
+      <view class="flex-between mb-20">
+        <view class="flex-col">
+          <view class="flex-row gap-10">
+            <text class="text-bold text-large">{{item.name}}</text>
+            <view wx:if="{{item.isCurrent}}" class="badge badge-success">当前</view>
+          </view>
+          <text class="text-secondary">{{item.subtitle}}</text>
+        </view>
+
+        <view wx:if="{{item.isUnlocked}}" class="flex-col text-right">
+          <text class="text-secondary text-small">层数 {{item.progress}}%</text>
+          <text class="text-small">第{{item.levels[0]}}-{{item.levels[4]}}层</text>
+        </view>
+        <view wx:else class="badge badge-warning">
+          未解锁
+        </view>
+      </view>
+
+      <text class="text-secondary text-small">{{item.description}}</text>
+
+      <view class="mt-20">
+        <view class="progress-bar">
+          <view
+            class="progress-bar-inner"
+            style="width: {{item.isUnlocked ? item.progress : 0}}%"
+          ></view>
+        </view>
+      </view>
+
+      <view class="flex-between mt-20">
+        <text class="text-secondary text-small">解锁条件: {{item.unlockCondition}}</text>
+      </view>
+
+      <view class="flex-row flex-wrap gap-10 mt-20">
+        <text class="text-small" wx:for="{{item.levels}}" wx:for-item="level" wx:key="*this">
+          <text class="{{unlockedLayers.includes(level) ? 'text-success' : 'text-secondary'}}">
+            {{level}}{{unlockedLayers.includes(level) ? '✓' : ''}}
+          </text>
+        </text>
+      </view>
+    </view>
+  </view>
+</view>

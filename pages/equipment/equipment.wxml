@@ -1,0 +1,63 @@
+<view class="container">
+  <view class="card mb-20">
+    <view class="flex-between">
+      <view class="flex-col">
+        <text class="text-secondary">💰 金币</text>
+        <text class="text-large text-bold text-primary">{{playerData.gold}}</text>
+      </view>
+      <view class="flex-col text-right">
+        <text class="text-secondary">挖掘速度</text>
+        <text class="text-large text-bold text-success">×{{effects.mineSpeed}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="text-bold text-large mb-20">装备升级</view>
+
+  <view class="equipment-list">
+    <view class="card mb-20" wx:for="{{equipmentList}}" wx:key="id">
+      <view class="flex-between mb-20">
+        <view class="flex-row gap-20">
+          <view class="icon-circle">{{item.icon}}</view>
+          <view class="flex-col text-left">
+            <text class="text-bold text-large">{{item.name}}</text>
+            <text class="text-secondary text-small">Lv.{{item.level}}/{{item.maxLevel}}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{item.isMaxed}}" class="badge badge-success">
+          已满级
+        </view>
+        <view wx:elif="{{item.canUpgrade}}">
+          <button
+            class="btn btn-primary"
+            data-eq-id="{{item.id}}"
+            bindtap="onUpgrade"
+          >
+            升级
+          </button>
+        </view>
+        <view wx:else class="badge badge-warning">
+          {{item.reason}}
+        </view>
+      </view>
+
+      <text class="text-secondary text-small">{{item.description}}</text>
+
+      <view wx:if="{{!item.isMaxed && item.costs.length > 0}}" class="mt-20">
+        <text class="text-secondary text-small">升级消耗:</text>
+        <view class="flex-row gap-10 mt-10">
+          <view
+            class="cost-item {{cost.owned >= cost.count ? 'cost-enough' : 'cost-not'}}"
+            wx:for="{{item.costs}}"
+            wx:for-item="cost"
+            wx:key="oreId"
+          >
+            <text>{{cost.icon}}</text>
+            <text>{{cost.count}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

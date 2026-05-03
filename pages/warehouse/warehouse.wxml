@@ -1,0 +1,20 @@
+<view class="container">
+  <view class="card mb-20">
+    <view class="flex-col text-center">
+      <text class="text-secondary">🏠 矿石仓库</text>
+      <text class="text-small text-secondary mt-10">仓库容量无限，可永久存储矿石</text>
+    </view>
+  </view>
+
+  <view wx:if="{{warehouseList.length === 0}}" class="text-center text-secondary p-30">
+    <text>仓库空空如也\n背包装不下时可以存到这里</text>
+  </view>
+
+  <view class="grid grid-3 gap-20">
+    <view class="card text-center" wx:for="{{warehouseList}}" wx:key="oreId">
+      <view class="ore-icon-large mb-10">{{item.icon}}</view>
+      <text class="text-bold">{{item.name}}</text>
+      <view class="badge badge-{{item.rarity}} mt-10">{{item.count}}</view>
+    </view>
+  </view>
+</view>

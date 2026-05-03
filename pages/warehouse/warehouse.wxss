@@ -1,0 +1,23 @@
+.ore-icon-large {
+  font-size: 64rpx;
+}
+
+.badge-common {
+  background-color: #8c8c8c;
+}
+
+.badge-rare {
+  background-color: #4A90D9;
+}
+
+.badge-epic {
+  background-color: #722ed1;
+}
+
+.badge-legendary {
+  background-color: #fa8c16;
+}
+
+.badge-myth {
+  background-color: #eb2f96;
+}
