@@ -109,93 +109,86 @@ class Game {
     if (this.animating || this.over) return;
 
     let moved = false;
-    const vectors = {
-      left: [0, -1], right: [0, 1],
-      up: [-1, 0], down: [1, 0]
-    };
-    const [dr, dc] = vectors[dir];
-    const isVert = dr !== 0;
+    const isLeft = dir === 'left';
+    const isRight = dir === 'right';
+    const isUp = dir === 'up';
+    const isDown = dir === 'down';
 
     for (let i = 0; i < GRID_SIZE; i++) {
       const line = [];
-      const tiles = [];
+      const tileRefs = [];
 
       for (let j = 0; j < GRID_SIZE; j++) {
-        const r = isVert ? j : i;
-        const c = isVert ? i : j;
+        let r, c;
+        if (isLeft || isRight) {
+          r = i;
+          c = isLeft ? j : GRID_SIZE - 1 - j;
+        } else {
+          r = isUp ? j : GRID_SIZE - 1 - j;
+          c = i;
+        }
         if (this.grid[r][c]) {
           line.push(this.grid[r][c].v);
-          tiles.push({ r, c, tile: this.grid[r][c] });
+          tileRefs.push({ r, c, tile: this.grid[r][c] });
         }
       }
 
       if (!line.length) continue;
 
-      const merged = [];
       const newLine = [];
+      const merged = [];
 
-      if (dc === -1 || dr === -1) {
-        for (let j = 0; j < line.length; j++) {
-          if (j + 1 < line.length && line[j] === line[j + 1]) {
-            newLine.push(line[j] * 2);
-            merged.push(newLine.length - 1);
-            this.score += line[j] * 2;
-            j++;
-          } else {
-            newLine.push(line[j]);
-          }
-        }
-      } else {
-        let j = line.length - 1;
-        while (j >= 0) {
-          if (j - 1 >= 0 && line[j] === line[j - 1]) {
-            newLine.unshift(line[j] * 2);
-            merged.unshift(newLine.length - 1);
-            this.score += line[j] * 2;
-            j--;
-          } else {
-            newLine.unshift(line[j]);
-            j--;
-          }
+      for (let j = 0; j < line.length; j++) {
+        if (j + 1 < line.length && line[j] === line[j + 1]) {
+          newLine.push(line[j] * 2);
+          merged.push(newLine.length - 1);
+          this.score += line[j] * 2;
+          j++;
+        } else {
+          newLine.push(line[j]);
         }
       }
 
       while (newLine.length < GRID_SIZE) {
-        if (dc === -1 || dr === -1) newLine.push(null);
-        else newLine.unshift(null);
+        newLine.push(null);
       }
 
       let idx = 0;
       for (let j = 0; j < GRID_SIZE; j++) {
-        const r = isVert ? j : i;
-        const c = isVert ? i : j;
+        let tR, tC;
+        if (isLeft) {
+          tR = i;
+          tC = j;
+        } else if (isRight) {
+          tR = i;
+          tC = GRID_SIZE - 1 - j;
+        } else if (isUp) {
+          tR = j;
+          tC = i;
+        } else {
+          tR = GRID_SIZE - 1 - j;
+          tC = i;
+        }
 
         if (newLine[j] !== null) {
-          const targetR = isVert ? (dc === -1 ? idx : GRID_SIZE - 1 - idx) : i;
-          const targetC = isVert ? i : (dr === -1 ? idx : GRID_SIZE - 1 - idx);
-
-          const src = tiles[idx];
+          const src = tileRefs[idx];
           if (src) {
-            src.tile.moveTo(targetR, targetC);
-            this.grid[targetR][targetC] = src.tile;
-            if (src.r !== targetR || src.c !== targetC) {
+            src.tile.moveTo(tR, tC);
+            this.grid[tR][tC] = src.tile;
+            if (src.r !== tR || src.c !== tC) {
               this.grid[src.r][src.c] = null;
               moved = true;
             }
           }
 
           if (merged.includes(j)) {
-            const mergedTile = this.grid[targetR][targetC];
-            if (mergedTile) {
-              mergedTile.v = newLine[j];
-            }
+            this.grid[tR][tC].v = newLine[j];
           }
+
           idx++;
         } else {
-          const r2 = isVert ? j : i;
-          const c2 = isVert ? i : j;
-          if (this.grid[r2][c2]) {
-            this.grid[r2][c2] = null;
+          if (this.grid[tR][tC]) {
+            this.grid[tR][tC] = null;
             moved = true;
           }
         }
